@@ -16,4 +16,3 @@ router
   .all(methodNotAllowed);
 
 module.exports = router;
-

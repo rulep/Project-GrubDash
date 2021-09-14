@@ -1,5 +1,4 @@
 const path = require("path");
-const { hasUncaughtExceptionCaptureCallback } = require("process");
 
 // Use the existing dishes data
 const dishes = require(path.resolve("src/data/dishes-data"));
@@ -7,120 +6,151 @@ const dishes = require(path.resolve("src/data/dishes-data"));
 // Use this function to assign ID's when necessary
 const nextId = require("../utils/nextId");
 
-function create(req, res) {
-  const { data: { name } = {} } = req.body;
-  const { data: { description } = {} } = req.body;
-  const { data: { image_url } = {} } = req.body;
-  const { data: { price } = {} } = req.body;
-
-  const newDish = {
-    id: nextId(),
-    name,
-    description,
-    price,
-    image_url,
-  };
-  dishes.push(newDish);
-  res.status(201).json({ data: newDish });
-}
-
-function hasName(req, res, next) {
-  const { data: { name } = {} } = req.body;
-
-  if (name) {
-    return next();
+// Middleware
+function isBody(req, res, next) {
+  const dish = req.body;
+  if (dish) {
+    res.locals.body = dish;
+    next();
+  } else {
+    console.log("Request had no body");
+    next();
   }
-
-  next({ status: 400, message: "A 'name' property is required." });
 }
 
-function hasDescription(req, res, next) {
-  const { data: { description } = {} } = req.body;
-
-  if (description) {
-    return next();
-  }
-  next({ status: 400, message: "A 'description' property is required." });
-}
-
-function hasURL(req, res, next) {
-  const { data: { image_url } = {} } = req.body;
-
-  if (image_url) {
-    return next();
-  }
-  next({ status: 400, message: "A 'image_url' property is required." });
-}
-
-function hasPrice(req, res, next) {
-  const { data: { price } = {} } = req.body;
-
-  if (price && price > 0 && typeof price === "number") {
-    return next();
-  }
-  next({ status: 400, message: "A 'price' property is required." });
-}
-
-function dishExists(request, response, next) {
-  const { dishId } = request.params;
-  const foundDish = dishes.find((dish) => dish.id === dishId);
+function dishIsValid(req, res, next) {
+  const dishId = req.params.dishId;
+  const foundDish = dishes.find((dish) => dish.id == dishId);
   if (foundDish) {
-    response.locals.dish = foundDish;
-    return next();
+    res.locals.foundDish = foundDish;
+    next();
+  } else {
+    next({
+      status: 404,
+      message: `Dish does not exist: ${dishId}`,
+    });
   }
-  next({
-    status: 404,
-    message: `Dish does not exist: ${dishId}`,
-  });
 }
 
-function idMatches(request, response, next) {
-  const { dish } = response.locals;
-  const { data: { id } = {} } = request.body;
-  const { dishId } = request.params;
-  if (!id || dish.id === id) {
-    return next();
+function routeIdMatchesBody(req, res, next) {
+  const dishId = req.params.dishId;
+  const id = req.body.data.id;
+  if (!id) next();
+  if (dishId == id) {
+    next();
+  } else {
+    next({
+      status: 400,
+      message: `Dish id did not match route id. \nDish: ${id}, Route: ${dishId}`,
+    });
   }
-  return next({
-    status: 400,
-    message: `Dish id does not match route id. Dish: ${id}, Route: ${dishId}`,
-  });
 }
 
-function list(request, response) {
-  response.json({ data: dishes });
+function nameIsValid(req, res, next) {
+  const dish = res.locals.body.data;
+  if (dish.name && dish.name !== "") {
+    next();
+  } else {
+    next({
+      status: 400,
+      message: "Dish must include a name",
+    });
+  }
 }
 
-function read(request, response) {
-  response.json({ data: response.locals.dish });
+function descriptionIsValid(req, res, next) {
+  const dish = res.locals.body.data;
+  if (dish.description) {
+    next();
+  } else {
+    next({
+      status: 400,
+      message: "Dish must include a description",
+    });
+  }
 }
 
-function update(request, response) {
-  const { dishId } = request.params;
-  const foundDish = dishes.find((dish) => dish.id === dishId);
-  const { data: { name } = {} } = request.body;
-  const { data: { description } = {} } = request.body;
-  const { data: { price } = {} } = request.body;
-  const { data: { image_url } = {} } = request.body;
-  foundDish.name = name;
-  foundDish.description = description;
-  foundDish.price = price;
-  foundDish.image_url = image_url;
+function priceIsValid(req, res, next) {
+  const dish = res.locals.body.data;
+  if (dish.price) {
+    next();
+  } else {
+    next({
+      status: 400,
+      message: "Dish must include a price",
+    });
+  }
+}
 
-  response.json({ data: foundDish });
+function priceIsValid(req, res, next) {
+  const dish = res.locals.body.data;
+  if (dish.price > 0 && Number.isInteger(dish.price)) {
+    next();
+  } else {
+    next({
+      status: 400,
+      message: "Dish must have a price that is an integer greater than 0",
+    });
+  }
+}
+
+function imageIsValid(req, res, next) {
+  const dish = res.locals.body.data;
+  if (dish.image_url) {
+    next();
+  } else {
+    next({
+      status: 400,
+      message: "Dish must include an image_url",
+    });
+  }
+}
+
+// End Points
+function list(req, res) {
+  res.send({ data: dishes });
+}
+
+function read(req, res) {
+  res.send({ data: res.locals.foundDish });
+}
+
+function update(req, res) {
+  const dish = res.locals.foundDish;
+  const { name, description, price, image_url } = res.locals.body.data;
+  dish.name = name;
+  dish.description = description;
+  dish.price = price;
+  dish.image_url = image_url;
+
+  res.status(200).send({ data: dish });
+}
+
+function create(req, res) {
+  const newDish = { ...res.locals.body.data, id: nextId() };
+  dishes.push(newDish);
+  res.status(201).send({ data: newDish });
 }
 
 module.exports = {
-  create: [hasName, hasDescription, hasURL, hasPrice, create],
   list,
-  read: [dishExists, read],
+  read: [dishIsValid, read],
   update: [
-    dishExists,
-    idMatches,
-    hasName,
-    hasDescription,
-    hasURL,
-    hasPrice,
+    isBody,
+    dishIsValid,
+    routeIdMatchesBody,
+    nameIsValid,
+    descriptionIsValid,
+    priceIsValid,
+    imageIsValid,
     update,
+  ],
+  create: [
+    isBody,
+    nameIsValid,
+    descriptionIsValid,
+    priceIsValid,
+    imageIsValid,
+    create,
   ],
 };

@@ -1,5 +1,4 @@
 const path = require("path");
-const { findIndex } = require("../data/orders-data");
 
 // Use the existing order data
 const orders = require(path.resolve("src/data/orders-data"));
@@ -7,160 +6,189 @@ const orders = require(path.resolve("src/data/orders-data"));
 // Use this function to assigh ID's when necessary
 const nextId = require("../utils/nextId");
 
-// TODO: Implement the /orders handlers needed to make the tests pass
-function list(request, response) {
-  response.json({ data: orders });
+// Middleware
+function hasBody(req, res, next) {
+  const body = req.body;
+  if (body) {
+    res.locals.body = body;
+    next();
+  } else {
+    next();
+  }
 }
 
-function create(req, res) {
-  const { data: { deliverTo } = {} } = req.body;
-  const { data: { mobileNumber } = {} } = req.body;
-  const { data: { dishes } = {} } = req.body;
+function idExists(req, res, next) {
+  const orderId = req.params.orderId;
+  const foundOrder = orders.find((order) => order.id === orderId);
+  if (foundOrder) {
+    res.locals.orderId = orderId;
+    res.locals.foundOrder = foundOrder;
+    next();
+  } else {
+    next({
+      status: 404,
+      message: `Id ${orderId} not found`,
+    });
+  }
+}
 
-  const newOrder = {
-    id: nextId(),
-    deliverTo,
-    mobileNumber,
-    dishes,
-  };
-
-  orders.push(newOrder);
-  res.status(201).json({ data: newOrder });
+function routeIdMatchesBody(req, res, next) {
+  const id = req.body.data.id;
+  if (res.locals.orderId == id || !id) {
+    next();
+  } else {
+    next({
+      status: 400,
+      message: `Order id did not match route id. \nOrder: ${id}, Route: ${res.locals.orderId}`,
+    });
+  }
 }
 
 function hasDeliverTo(req, res, next) {
-  const { data: { deliverTo } = {} } = req.body;
-
-  if (deliverTo) {
-    return next();
+  if (res.locals.body.data.deliverTo) {
+    next();
+  } else {
+    next({
+      status: 400,
+      message: "Order must include a deliverTo",
+    });
   }
-  next({ status: 400, message: "A 'deliverTo' property is required." });
 }
 
-function hasMobile(req, res, next) {
-  const { data: { mobileNumber } = {} } = req.body;
-
-  if (mobileNumber) {
-    return next();
+function hasMobileNumber(req, res, next) {
+  if (res.locals.body.data.mobileNumber) {
+    next();
+  } else {
+    next({
+      status: 400,
+      message: "Order must include a mobileNumber",
+    });
   }
-  next({ status: 400, message: "A 'mobileNumber' property is required." });
 }
 
-function hasDishes(req, res, next) {
-  const { data: { dishes } = {} } = req.body;
-  if (dishes && dishes.length > 0 && Array.isArray(dishes)) {
-    return next();
+function hasStatus(req, res, next) {
+  const status = res.locals.body.data.status;
+  if (
+    status === "pending" ||
+    status === "preparing" ||
+    status === "out-for-delivery" ||
+    status === "delivered"
+  ) {
+    next();
+  } else {
+    next({
+      status: 400,
+      message:
+        "Order must have a status of pending, preparing, out-for-delivery, delivered",
+    });
   }
-  next({ status: 400, message: "A 'dish' property is required." });
 }
 
-function hasValidDishQuantity(req, res, next) {
-  const { data: { dishes } = {} } = req.body;
-
-  dishes.forEach((dish) => {
-    const quantity = dish.quantity;
-    if (!quantity || quantity <= 0 || typeof quantity !== "number") {
-      return next({
-        status: 400,
-        message: `Dish ${dish.id} must have a quantity that is an integer greater than 0.`,
-      });
-    }
-  });
-  next();
-}
-
-function orderExists(request, response, next) {
-  const { orderId } = request.params;
-  const foundOrder = orders.find((order) => order.id === orderId);
-  if (foundOrder) {
-    response.locals.order = foundOrder;
-    return next();
+function statusIsValid(req, res, next) {
+  if (res.locals.body.data.status === "delivered") {
+    next({
+      status: 400,
+      message: "A delivered order cannot be changed",
+    });
+  } else {
+    next();
   }
-  next({
-    status: 404,
-    message: `Order does not exist: ${orderId}`,
-  });
 }
 
-function idMatches(request, response, next) {
-  const { order } = response.locals;
-  const { data: { id } = {} } = request.body;
-  const { orderId } = request.params;
-  if (!id || order.id === id) {
-    return next();
-  }
-  return next({
-    status: 400,
-    message: `Order id does not match route id. Order: ${id}, Route: ${orderId}`,
-  });
-}
-
-const validStatus = ["pending", "preparing", "out-for-delivery", "delivered"];
-
-function resultStatusIsValid(request, response, next) {
-  const { data: { status } = {} } = request.body;
-  if (validStatus.includes(status)) {
-    return next();
-  }
-  next({
-    status: 400,
-    message: `Value of the 'status' property must be one of ${validStatus}. Received: ${status}`,
-  });
-}
-
-function orderStatusPending(request, response, next) {
-  const { status } = response.locals.order;
-  if (status !== "pending") {
-    return next({
+function statusPending(req, res, next) {
+  if (res.locals.foundOrder.status !== "pending") {
+    next({
       status: 400,
       message: "An order cannot be deleted unless it is pending",
     });
+  } else {
+    next();
   }
-  next();
 }
 
-function read(request, response) {
-  response.json({ data: response.locals.order });
+function hasDishes(req, res, next) {
+  const dishes = res.locals.body.data.dishes;
+  if (dishes && dishes[0] && Array.isArray(dishes)) {
+    next();
+  } else {
+    next({
+      status: 400,
+      message: "Order must include at least one dish",
+    });
+  }
 }
 
-function update(request, response) {
-  const { orderId } = request.params;
-  const foundOrder = orders.find((order) => order.id === orderId);
-
-  const { data: { deliverTo } = {} } = request.body;
-  const { data: { mobileNumber } = {} } = request.body;
-  const { data: { dishes } = {} } = request.body;
-  const { data: { status } = {} } = request.body;
-  foundOrder.deliverTo = deliverTo;
-  foundOrder.mobileNumber = mobileNumber;
-  foundOrder.dishes = dishes;
-  foundOrder.status = status;
-
-  response.json({ data: foundOrder });
+function hasQuantities(req, res, next) {
+  const data = res.locals.body.data;
+  const noQuantityIndex = data.dishes.findIndex(
+    (dish) =>
+      !dish.quantity || !dish.quantity > 0 || !Number.isInteger(dish.quantity)
+  );
+  if (noQuantityIndex !== -1) {
+    next({
+      status: 400,
+      message: `Dish ${noQuantityIndex} must have a quantity that is an integer greater than 0`,
+    });
+  } else {
+    next();
+  }
 }
 
-function destroy(request, response) {
-  const { orderId } = request.params;
-  const index = orders.findIndex((order) => order.id == orderId);
-  orders.splice(index, 1);
+// End Points
+function list(req, res) {
+  res.send({ data: orders });
+}
 
-  response.sendStatus(204);
+function read(req, res) {
+  res.send({ data: res.locals.foundOrder });
+}
+
+function update(req, res) {
+  const order = res.locals.foundOrder;
+  const { deliverTo, mobileNumber, status, dishes } = res.locals.body.data;
+  order.deliverTo = deliverTo;
+  order.mobileNumber = mobileNumber;
+  order.status = status;
+  order.dishes = dishes;
+  res.send({ data: order });
+}
+
+function create(req, res) {
+  const newOrder = { ...res.locals.body.data, id: nextId() };
+  orders.push(newOrder);
+  res.status(201).send({ data: newOrder });
+}
+
+function destroy(req, res) {
+  const indexToDestroy = orders.findIndex(
+    (order) => order.id === res.locals.orderId
+  );
+  orders.splice(indexToDestroy, 1);
+  res.sendStatus(204);
 }
 
 module.exports = {
   list,
-  create: [hasDeliverTo, hasMobile, hasDishes, hasValidDishQuantity, create],
-  read: [orderExists, read],
+  read: [idExists, read],
   update: [
-    orderExists,
-    idMatches,
+    hasBody,
+    idExists,
+    routeIdMatchesBody,
     hasDeliverTo,
-    hasMobile,
+    hasMobileNumber,
+    hasStatus,
+    statusIsValid,
     hasDishes,
-    hasValidDishQuantity,
-    resultStatusIsValid,
+    hasQuantities,
     update,
   ],
-  delete: [orderExists, orderStatusPending, destroy],
+  create: [
+    hasBody,
+    hasDeliverTo,
+    hasMobileNumber,
+    hasDishes,
+    hasQuantities,
+    create,
+  ],
+  delete: [idExists, statusPending, destroy],
 };
-
