@@ -70,7 +70,7 @@ function descriptionIsValid(req, res, next) {
   }
 }
 
-function priceIsValid(req, res, next) {
+function priceIsIncluded(req, res, next) {
   const dish = res.locals.body.data;
   if (dish.price) {
     next();
@@ -141,6 +141,7 @@ module.exports = {
     routeIdMatchesBody,
     nameIsValid,
     descriptionIsValid,
+    priceIsIncluded,
     priceIsValid,
     imageIsValid,
     update,
@@ -149,6 +150,7 @@ module.exports = {
     isBody,
     nameIsValid,
     descriptionIsValid,
+    priceIsIncluded,
     priceIsValid,
     imageIsValid,
     create,
